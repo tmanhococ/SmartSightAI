@@ -27,6 +27,8 @@ REQUIRED_PIP_PACKAGES = [
     "accelerate",
     # Stability: pin pydantic to avoid gradio_client JSON schema TypeError
     "pydantic",
+    # Stability: pin numpy to resolve Numpy is not available runtime error
+    "numpy",
 ]
 
 REQUIRED_APT_PACKAGES = [
@@ -153,6 +155,17 @@ def test_fastapi_and_starlette_are_pinned():
         "requirements.txt must pin starlette (e.g. starlette<0.39.0) to prevent "
         "TypeError: unhashable type: 'dict' crash in template rendering."
     )
+
+
+def test_numpy_is_pinned():
+    """numpy must be pinned to avoid Numpy is not available runtime crash."""
+    path = os.path.join(ROOT, "requirements.txt")
+    content = open(path, "r", encoding="utf-8").read()
+    assert "numpy" in content, (
+        "requirements.txt must pin numpy (e.g. numpy==1.26.4) to prevent "
+        "RuntimeError: Numpy is not available on Hugging Face Spaces."
+    )
+
 
 
 

@@ -24,7 +24,7 @@ class ModelRegistry:
             
         if self.vlm_models[version] is None:
             if version == "Moondream2 (0.5B)":
-                model_id = "andito/moondream-05" # Community transformers 0.5B model
+                model_id = "andito/moondream05" # Community transformers 0.5B model
                 processor = AutoTokenizer.from_pretrained(model_id)
                 model = AutoModelForCausalLM.from_pretrained(
                     model_id,
