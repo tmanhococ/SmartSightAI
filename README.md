@@ -8,7 +8,7 @@ sdk_version: 4.40.0
 app_file: app.py
 pinned: false
 license: apache-2.0
-python_version: 3.10
+python_version: "3.10"
 ---
 
 # 🌐 SmartSight AI — Hugging Face Space Deployment
