@@ -1,8 +1,8 @@
-# AI Image Describer Implementation Plan (Cập nhật sửa lỗi)
+# AI Image Describer Implementation Plan (Cập nhật 2 phiên bản Moondream2)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Xây dựng ứng dụng Gradio mô tả hình ảnh bằng tiếng Việt chạy cục bộ, hỗ trợ webcam, đổi phiên bản VLM (BLIP-Base vs Moondream2), dịch thuật (sử dụng deep-translator) và phát audio tiếng Việt (lưu file trong thư mục /tmp) với cơ chế tự động chuyển đổi sang chế độ offline khi mất mạng.
+**Goal:** Xây dựng ứng dụng Gradio mô tả hình ảnh bằng tiếng Việt chạy cục bộ, hỗ trợ webcam, đổi phiên bản VLM (Moondream2 2B vs Moondream2 0.5B), dịch thuật (sử dụng deep-translator) và phát audio tiếng Việt (lưu file trong thư mục /tmp) với cơ chế tự động chuyển đổi sang chế độ offline khi mất mạng.
 
 **Architecture:** Sử dụng kiến trúc Pipeline chia thành các module chức năng độc lập (preprocess, vision_model, translate, tts). Quản lý mô hình qua class ModelRegistry dạng Singleton, đo hiệu năng bằng psutil, giao diện Gradio xử lý queue và nút Cancel bản địa.
 
@@ -473,8 +473,8 @@ class ModelRegistry:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(ModelRegistry, cls).__new__(cls)
-            cls._instance.vlm_models = {"Moondream2 (2B)": None, "BLIP-Base (220M)": None}
-            cls._instance.vlm_processors = {"Moondream2 (2B)": None, "BLIP-Base (220M)": None}
+            cls._instance.vlm_models = {"Moondream2 (2B)": None, "Moondream2 (0.5B)": None}
+            cls._instance.vlm_processors = {"Moondream2 (2B)": None, "Moondream2 (0.5B)": None}
             cls._instance.translation_model = None
             cls._instance.translation_tokenizer = None
             cls._instance.translator_instance = None
@@ -485,11 +485,14 @@ class ModelRegistry:
             raise ValueError(f"Unknown VLM model version: {version}")
             
         if self.vlm_models[version] is None:
-            if version == "BLIP-Base (220M)":
-                from transformers import BlipProcessor, BlipForConditionalGeneration
-                model_id = "Salesforce/blip-image-captioning-base"
-                processor = BlipProcessor.from_pretrained(model_id)
-                model = BlipForConditionalGeneration.from_pretrained(model_id)
+            if version == "Moondream2 (0.5B)":
+                model_id = "andito/moondream-05" # Community transformers 0.5B model
+                processor = AutoTokenizer.from_pretrained(model_id)
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_id,
+                    trust_remote_code=True,
+                    torch_dtype=torch.float32
+                )
             else: # Moondream2 (2B)
                 model_id = "vikhyatk/moondream2"
                 revision = "2025-01-09" # API 2025 compatible
@@ -507,7 +510,6 @@ class ModelRegistry:
         
     def get_translator_module(self, mode: str) -> TranslatorModule:
         if self.translator_instance is None:
-            # We initialize TranslatorModule with Helsinki-NLP model if requested or offline fallback needed
             model_id = "Helsinki-NLP/opus-mt-en-vi"
             self.translation_tokenizer = MarianTokenizer.from_pretrained(model_id)
             self.translation_model = MarianMTModel.from_pretrained(model_id)
@@ -524,7 +526,7 @@ Expected: PASS
 
 ```bash
 git add src/registry.py tests/test_registry.py
-git commit -m "feat: implement singleton model registry with key correction and TranslatorModule cache"
+git commit -m "feat: implement singleton model registry with 2B and 0.5B Moondream2 support"
 ```
 
 ---
@@ -544,26 +546,28 @@ from unittest.mock import MagicMock
 from PIL import Image
 from src.pipeline.vision_model import run_vlm_inference
 
-def test_run_vlm_blip_mock():
+def test_run_vlm_moondream_new_api_mock():
     mock_model = MagicMock()
-    mock_processor = MagicMock()
-    
-    mock_processor.return_value = {"pixel_values": None}
-    mock_model.generate.return_value = [[1, 2, 3]]
-    mock_processor.decode.return_value = "a person holding a phone"
-    
-    img = Image.new("RGB", (224, 224))
-    result = run_vlm_inference(img, "BLIP-Base (220M)", mock_model, mock_processor)
-    assert result == "a person holding a phone"
-    
-def test_run_vlm_moondream_mock():
-    mock_model = MagicMock()
+    # Mock the new query method
     mock_model.query.return_value = {"answer": "a photo of a laptop"}
     
     img = Image.new("RGB", (224, 224))
     result = run_vlm_inference(img, "Moondream2 (2B)", mock_model, MagicMock(), prompt="What is this?")
     assert result == "a photo of a laptop"
     mock_model.query.assert_called_once_with(img, "What is this?")
+
+def test_run_vlm_moondream_old_api_fallback_mock():
+    mock_model = MagicMock()
+    # Delete query method to trigger fallback
+    del mock_model.query
+    mock_model.encode_image.return_value = "encoded"
+    mock_model.answer_question.return_value = "a photo of a laptop from fallback"
+    
+    img = Image.new("RGB", (224, 224))
+    result = run_vlm_inference(img, "Moondream2 (0.5B)", mock_model, "processor", prompt="What is this?")
+    assert result == "a photo of a laptop from fallback"
+    mock_model.encode_image.assert_called_once_with(img)
+    mock_model.answer_question.assert_called_once_with("encoded", "What is this?", "processor")
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -578,19 +582,20 @@ Create: `src/pipeline/vision_model.py`
 from PIL import Image
 
 def run_vlm_inference(image: Image.Image, version: str, model, processor, prompt: str = "") -> str:
-    if version == "BLIP-Base (220M)":
-        inputs = processor(image, return_tensors="pt")
-        out = model.generate(**inputs)
-        caption = processor.decode(out[0], skip_special_tokens=True)
-        return caption
-    elif version == "Moondream2 (2B)":
-        if not prompt.strip():
-            prompt = "Describe what you see in this image briefly and clearly. Focus on the main subject, people, objects, and any important context. Keep it under 3 sentences."
-        # Using new Moondream2 transformers API
+    if version not in ["Moondream2 (2B)", "Moondream2 (0.5B)"]:
+        raise ValueError(f"Unsupported model version: {version}")
+        
+    if not prompt.strip():
+        prompt = "Describe what you see in this image briefly and clearly. Focus on the main subject, people, objects, and any important context. Keep it under 3 sentences."
+        
+    # Check for the newer API (model.query) or fallback to older API (encode_image / answer_question)
+    if hasattr(model, "query"):
         response = model.query(image, prompt)
         return response["answer"]
     else:
-        raise ValueError(f"Unsupported model version: {version}")
+        # Fallback to older Moondream version API
+        enc_image = model.encode_image(image)
+        return model.answer_question(enc_image, prompt, processor)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -602,7 +607,7 @@ Expected: PASS
 
 ```bash
 git add src/pipeline/vision_model.py tests/test_vision_model.py
-git commit -m "feat: implement VLM inference using Moondream2 2025 query API"
+git commit -m "feat: implement VLM inference with fallback compat for query and answer_question APIs"
 ```
 
 ---
@@ -612,7 +617,7 @@ git commit -m "feat: implement VLM inference using Moondream2 2025 query API"
 **Files:**
 - Create: `src/app.py`
 
-- [ ] **Step 1: Write full UI application with queuing, cancel support, and fixed layout**
+- [ ] **Step 1: Write full UI application with Moondream2 2B and 0.5B versions**
 
 Create: `src/app.py`
 ```python
@@ -714,7 +719,7 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="indigo
         with gr.Column(scale=1):
             input_image = gr.Image(sources=["webcam", "upload"], type="pil", label="Đầu vào hình ảnh")
             vlm_version = gr.Radio(
-                choices=["Moondream2 (2B)", "BLIP-Base (220M)"], 
+                choices=["Moondream2 (2B)", "Moondream2 (0.5B)"], 
                 value="Moondream2 (2B)", 
                 label="Mô hình VLM"
             )
@@ -735,7 +740,7 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="indigo
                 )
                 custom_prompt = gr.Textbox(
                     lines=2, 
-                    label="VLM Prompt Template (Chỉ dùng cho Moondream2)",
+                    label="VLM Prompt Template",
                     placeholder="Mặc định: Describe what you see..."
                 )
                 
@@ -744,7 +749,6 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="indigo
             vi_out = gr.Textbox(label="Mô tả Tiếng Việt (Dịch)", interactive=False)
             audio_out = gr.Audio(label="Giọng đọc Tiếng Việt", autoplay=True, interactive=False)
             
-            # Using gr.Group for performance metrics instead of gr.Label
             with gr.Group():
                 gr.Markdown("### 📊 Performance Dashboard")
                 with gr.Row():
@@ -763,7 +767,7 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="indigo
     cancel_btn.click(fn=None, cancels=[run_event])
 
 if __name__ == "__main__":
-    # Pre-cache registry setup on startup with default Moondream2
+    # Pre-cache registry setup on startup with default Moondream2 (2B)
     print("Warm-starting ModelRegistry with Moondream2 (2B)...")
     registry.get_vlm("Moondream2 (2B)")
     
@@ -785,5 +789,5 @@ Expected: Webserver khởi động tại http://127.0.0.1:7860/ và load thành 
 
 ```bash
 git add src/app.py
-git commit -m "feat: add main Gradio web application with native queue, cancel, temp directory outputs, gr.Group container, and warm-start Moondream2"
+git commit -m "feat: add main Gradio web application with native queue, cancel, temp directory outputs, gr.Group container, and warm-start Moondream2 2B"
 ```
