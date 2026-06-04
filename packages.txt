@@ -1,0 +1,4 @@
+libvips-dev
+espeak-ng
+libespeak1
+ffmpeg
