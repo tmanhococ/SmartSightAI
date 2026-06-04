@@ -141,6 +141,21 @@ def test_pydantic_is_pinned():
     )
 
 
+def test_fastapi_and_starlette_are_pinned():
+    """fastapi and starlette must be pinned to older versions to prevent 'unhashable type: dict' crash."""
+    path = os.path.join(ROOT, "requirements.txt")
+    content = open(path, "r", encoding="utf-8").read().lower()
+    assert "fastapi" in content, (
+        "requirements.txt must pin fastapi (e.g. fastapi<0.115.0) to prevent "
+        "compatibility issues with newer Starlette/FastAPI releases."
+    )
+    assert "starlette" in content, (
+        "requirements.txt must pin starlette (e.g. starlette<0.39.0) to prevent "
+        "TypeError: unhashable type: 'dict' crash in template rendering."
+    )
+
+
+
 def test_readme_sdk_version_matches_requirements():
     """sdk_version in README.md must be >=4.44.1 to match requirements.txt."""
     path = os.path.join(ROOT, "README.md")
