@@ -24,7 +24,7 @@ class TTSModule:
                 logging.error(f"Failed to initialize pyttsx3 offline TTS: {e}")
                 
     def generate_speech(self, text: str, mode: str = "Auto-Detect (Online)", filename: str = None) -> str:
-        if not text.strip():
+        if not text or not text.strip():
             return None
             
         if filename is None:
@@ -38,8 +38,12 @@ class TTSModule:
                 pass
                 
         if mode == "Offline (pyttsx3)":
-            self._generate_offline(text, filename)
-            return filename
+            try:
+                self._generate_offline(text, filename)
+                return filename
+            except Exception as e:
+                logging.error(f"Offline TTS failed: {e}")
+                return None
             
         # Try Online gTTS
         try:
