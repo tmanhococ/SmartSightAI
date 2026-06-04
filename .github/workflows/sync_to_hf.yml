@@ -12,13 +12,19 @@ jobs:
           fetch-depth: 0
           lfs: true
 
-      - name: Push to HF (Orphaned Push to bypass history binaries)
+      - name: Push to HF Spaces
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # Clean up documentation directory
+          # Remove directories not needed in HF Space
           rm -rf docs
-          # Remove original git tracking to create a clean single-commit history
+          rm -rf .agent
+          rm -rf .github
+          rm -rf tests
+          find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
+
+          # Create a clean single-commit history (avoids binary/LFS issues)
           rm -rf .git
           git init
           git config --global user.email "actions@github.com"
@@ -26,4 +32,23 @@ jobs:
           git checkout -b main
           git add .
           git commit -m "deploy to Hugging Face Spaces"
-          git push --force https://tmanhococ:$HF_TOKEN@huggingface.co/spaces/tmanhococ/SmartSightAI main:refs/heads/main
+
+          # Push with retry on 429 rate-limit errors (3 attempts, exponential backoff)
+          HF_REMOTE="https://tmanhococ:$HF_TOKEN@huggingface.co/spaces/tmanhococ/SmartSightAI"
+          for attempt in 1 2 3; do
+            echo "Push attempt $attempt..."
+            if git push --force "$HF_REMOTE" main:refs/heads/main; then
+              echo "Push succeeded on attempt $attempt."
+              break
+            else
+              EXIT_CODE=$?
+              if [ $attempt -lt 3 ]; then
+                WAIT=$((attempt * 30))
+                echo "Push failed (exit $EXIT_CODE). Retrying in ${WAIT}s..."
+                sleep $WAIT
+              else
+                echo "Push failed after 3 attempts."
+                exit $EXIT_CODE
+              fi
+            fi
+          done
