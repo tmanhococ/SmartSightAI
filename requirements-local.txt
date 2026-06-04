@@ -1,0 +1,25 @@
+gradio==4.44.1
+transformers==4.40.0
+torch==2.2.2
+numpy==1.26.4
+pillow==10.3.0
+deep-translator==1.11.4
+gTTS==2.5.1
+pyttsx3==2.90
+psutil==5.9.8
+sentencepiece==0.2.0
+sacremoses==0.1.1
+pytest==8.2.0
+huggingface_hub==0.23.0
+pyvips==2.2.3
+pyvips-binary==8.18.2
+einops==0.8.0
+timm==0.9.16
+accelerate==0.30.0
+# Pin pydantic to avoid gradio_client JSON schema TypeError (bool-not-iterable bug)
+pydantic==2.10.6
+# Pin jinja2 to avoid unhashable type: 'dict' crash in Gradio 4.x template cache
+jinja2==3.1.4
+# Pin fastapi and starlette to avoid unhashable type: 'dict' crash in TemplateResponse
+fastapi==0.112.4
+starlette==0.38.2
