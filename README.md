@@ -8,6 +8,7 @@ sdk_version: 4.40.0
 app_file: app.py
 pinned: false
 license: apache-2.0
+python_version: 3.10
 ---
 
 # 🌐 SmartSight AI — Hugging Face Space Deployment
@@ -20,6 +21,7 @@ Bản cập nhật cấu hình cho Hugging Face Spaces chạy mô phỏng trợ 
 
 - **SDK:** Gradio
 - **Phiên bản SDK:** 4.40.0
+- **Phiên bản Python:** 3.10
 - **Tệp khởi chạy chính:** `app.py` (tệp wrapper ở thư mục gốc)
 
 ---
