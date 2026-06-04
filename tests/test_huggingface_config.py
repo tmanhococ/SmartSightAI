@@ -101,20 +101,33 @@ def test_app_py_has_no_standalone_output_mp3():
     assert "uuid" in content, "src/app.py must import and use uuid for unique audio filenames"
 
 
-def test_gradio_min_version_is_pinned():
-    """Gradio must be pinned to >=4.44.1 to avoid the gradio_client JSON schema TypeError."""
+def test_gradio_version_is_exact_pin():
+    """Gradio must be pinned to ==4.44.1 (exact), not >=, to prevent pip from
+    upgrading to Gradio 6.x which has breaking API changes that crash HF Space."""
     path = os.path.join(ROOT, "requirements.txt")
     content = open(path, "r", encoding="utf-8").read()
-    # Accept any form: gradio>=4.44.1, gradio==4.44.1, etc.
     import re
-    match = re.search(r"gradio([>=!<]+)([\d.]+)", content)
-    assert match, "requirements.txt must include a gradio version pin"
-    op, ver = match.group(1), match.group(2)
+    # Must be exact == pin
+    match = re.search(r"gradio==([\d.]+)", content)
+    assert match, (
+        "requirements.txt must use 'gradio==4.44.1' (exact pin), not 'gradio>=...'. "
+        "Using >= allows pip to upgrade to Gradio 6.x which has breaking changes "
+        "incompatible with sdk_version: 4.44.1 HF Spaces infrastructure."
+    )
     from packaging.version import Version
-    # The lower bound must be at least 4.44.1
-    assert Version(ver) >= Version("4.44.1"), (
-        f"gradio must be pinned to >=4.44.1 (found {op}{ver}). "
-        "Gradio 4.40.0 has a known TypeError in get_api_info that crashes the Space."
+    assert Version(match.group(1)) >= Version("4.44.1"), (
+        f"gradio must be pinned to >=4.44.1 (found =={match.group(1)})"
+    )
+
+
+def test_jinja2_is_pinned():
+    """jinja2 must be pinned to <4.0.0 to avoid 'unhashable type: dict' crash
+    in Gradio 4.x template cache with newer Jinja2 versions."""
+    path = os.path.join(ROOT, "requirements.txt")
+    content = open(path, "r", encoding="utf-8").read().lower()
+    assert "jinja2" in content, (
+        "requirements.txt must pin jinja2 (e.g. jinja2>=3.1.2,<4.0.0) to prevent "
+        "TypeError: unhashable type: 'dict' crash in Gradio 4.x template rendering."
     )
 
 
