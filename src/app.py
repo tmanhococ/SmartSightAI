@@ -145,9 +145,6 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="indigo
     cancel_btn.click(fn=None, cancels=[run_event])
 
 if __name__ == "__main__":
-    # Pre-cache registry setup on startup with default Moondream2 (2B)
-    print("Warm-starting ModelRegistry with Moondream2 (2B)...")
-    registry.get_vlm("Moondream2 (2B)")
-    
-    # Enable queuing to serialise concurrency on CPU
+    # For local development only — HF Spaces uses the root app.py instead.
+    # Model loads lazily on first Run click (no warm-start blocking the UI).
     demo.queue().launch()

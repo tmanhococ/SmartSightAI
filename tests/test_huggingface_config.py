@@ -153,3 +153,17 @@ def test_app_py_launch_has_required_hf_params():
         "app.py launch() must set server_name='0.0.0.0' to bind all interfaces "
         "on HF Spaces containers (prevents 'localhost not accessible' ValueError)"
     )
+
+
+def test_app_py_no_warm_start_blocking_call():
+    """Root app.py must NOT call registry.get_vlm() at startup.
+
+    Warm-starting blocks Gradio from starting for ~40s while downloading
+    the 3.85GB model. Model must load lazily on first user Run instead.
+    """
+    path = os.path.join(ROOT, "app.py")
+    content = open(path, "r", encoding="utf-8").read()
+    assert "registry.get_vlm" not in content, (
+        "app.py must not call registry.get_vlm() at startup. "
+        "Use lazy loading: model is loaded on first Run via ModelRegistry singleton."
+    )
