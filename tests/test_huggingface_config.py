@@ -25,6 +25,8 @@ REQUIRED_PIP_PACKAGES = [
     "einops",
     "timm",
     "accelerate",
+    # Stability: pin pydantic to avoid gradio_client JSON schema TypeError
+    "pydantic",
 ]
 
 REQUIRED_APT_PACKAGES = [
@@ -97,3 +99,57 @@ def test_app_py_has_no_standalone_output_mp3():
         "Use UUID-based filenames to prevent race conditions in multi-user environments."
     )
     assert "uuid" in content, "src/app.py must import and use uuid for unique audio filenames"
+
+
+def test_gradio_min_version_is_pinned():
+    """Gradio must be pinned to >=4.44.1 to avoid the gradio_client JSON schema TypeError."""
+    path = os.path.join(ROOT, "requirements.txt")
+    content = open(path, "r", encoding="utf-8").read()
+    # Accept any form: gradio>=4.44.1, gradio==4.44.1, etc.
+    import re
+    match = re.search(r"gradio([>=!<]+)([\d.]+)", content)
+    assert match, "requirements.txt must include a gradio version pin"
+    op, ver = match.group(1), match.group(2)
+    from packaging.version import Version
+    # The lower bound must be at least 4.44.1
+    assert Version(ver) >= Version("4.44.1"), (
+        f"gradio must be pinned to >=4.44.1 (found {op}{ver}). "
+        "Gradio 4.40.0 has a known TypeError in get_api_info that crashes the Space."
+    )
+
+
+def test_pydantic_is_pinned():
+    """pydantic must be pinned to avoid gradio_client JSON schema TypeError."""
+    path = os.path.join(ROOT, "requirements.txt")
+    content = open(path, "r", encoding="utf-8").read()
+    assert "pydantic" in content, (
+        "requirements.txt must pin pydantic (e.g. pydantic==2.10.6) to prevent "
+        "gradio_client/utils.py TypeError: argument of type 'bool' is not iterable"
+    )
+
+
+def test_readme_sdk_version_matches_requirements():
+    """sdk_version in README.md must be >=4.44.1 to match requirements.txt."""
+    path = os.path.join(ROOT, "README.md")
+    content = open(path, "r", encoding="utf-8").read()
+    import re
+    match = re.search(r"sdk_version:\s*([\d.]+)", content)
+    assert match, "README.md must specify sdk_version in YAML front-matter"
+    from packaging.version import Version
+    assert Version(match.group(1)) >= Version("4.44.1"), (
+        f"README.md sdk_version must be >=4.44.1 (found {match.group(1)})"
+    )
+
+
+def test_app_py_launch_has_required_hf_params():
+    """Root app.py launch() must have show_api=False and server_name=0.0.0.0."""
+    path = os.path.join(ROOT, "app.py")
+    content = open(path, "r", encoding="utf-8").read()
+    assert "show_api=False" in content, (
+        "app.py launch() must set show_api=False to disable the API schema generation "
+        "route that causes TypeError: argument of type 'bool' is not iterable"
+    )
+    assert 'server_name="0.0.0.0"' in content or "server_name='0.0.0.0'" in content, (
+        "app.py launch() must set server_name='0.0.0.0' to bind all interfaces "
+        "on HF Spaces containers (prevents 'localhost not accessible' ValueError)"
+    )

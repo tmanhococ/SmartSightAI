@@ -4,7 +4,7 @@ emoji: 🌐
 colorFrom: blue
 colorTo: indigo
 sdk: gradio
-sdk_version: 4.40.0
+sdk_version: 4.44.1
 app_file: app.py
 pinned: false
 license: apache-2.0
@@ -20,7 +20,7 @@ Bản cập nhật cấu hình cho Hugging Face Spaces chạy mô phỏng trợ 
 Ứng dụng này được thiết kế để triển khai trực tiếp trên Hugging Face Spaces bằng các cài đặt sau:
 
 - **SDK:** Gradio
-- **Phiên bản SDK:** 4.40.0
+- **Phiên bản SDK:** 4.44.1
 - **Phiên bản Python:** 3.10
 - **Tệp khởi chạy chính:** `app.py` (tệp wrapper ở thư mục gốc)
 
