@@ -13,7 +13,7 @@ python_version: "3.10"
 
 # 🌐 SmartSight AI — Hugging Face Space Deployment
 
-Bản cập nhật cấu hình cho Hugging Face Spaces chạy mô phỏng trợ lý mô tả hình ảnh hỗ trợ tiếp cận (Accessibility System) bằng giọng nói Tiếng Việt dành cho người khiếm thị.
+Bản cập nhật cấu hình cho Hugging Face Spaces chạy mô phỏng trợ lý mô tả hình ảnh hỗ trợ tiếp cận (Accessibility System) bằng giọng nói Tiếng Việt dành cho người khiếm thị.///
 
 ## 🚀 Cấu hình Hugging Face Spaces
 
