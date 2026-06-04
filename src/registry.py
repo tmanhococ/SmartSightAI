@@ -60,6 +60,13 @@ class ModelRegistry:
             raise ValueError(f"Unknown VLM model version: {version}")
 
         if self.vlm_models[version] is None:
+            # Force global default dtype to float32 BEFORE any model code runs.
+            # Moondream2's cached vision.py creates the `all_crops` image tensor
+            # with torch.get_default_dtype(), so this prevents Half tensors from
+            # being created even if the HF runtime set the default to float16.
+            torch.set_default_dtype(torch.float32)
+            logger.info("Set default tensor dtype to float32 for VLM loading.")
+
             if version == "Moondream2 (0.5B)":
                 model_id = "andito/moondream05"  # Community transformers 0.5B model
                 processor = AutoTokenizer.from_pretrained(model_id)

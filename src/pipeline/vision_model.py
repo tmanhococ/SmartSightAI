@@ -3,17 +3,18 @@ import torch.nn as nn
 from PIL import Image
 
 
-def _ensure_float32(model: nn.Module) -> nn.Module:
-    """Convert all model weights to float32 to prevent Half/Float dtype mismatch on CPU."""
-    try:
-        device = next(model.parameters()).device
-        if device.type == "cpu":
-            # Walk the full module tree to ensure every sub-module is float32
-            inner = getattr(model, "model", model)
-            inner.float()
-    except StopIteration:
-        pass  # model has no parameters (unlikely), safe to ignore
-    return model
+def _ensure_model_float32(model: nn.Module) -> None:
+    """
+    Force ALL parameters and buffers of the model (and any wrapped inner model)
+    to float32.  This is necessary because Moondream2's cached source files
+    (vision.py / moondream.py) create the `all_crops` image tensor with the
+    same dtype as the model weights.  If any sub-module is still float16 the
+    `F.linear(x, w.weight, w.bias)` call will raise a Half/Float mismatch.
+    """
+    # HfMoondream wraps MoondreamModel as .model — convert both levels.
+    for obj in (model, getattr(model, "model", None)):
+        if obj is not None and isinstance(obj, nn.Module):
+            obj.float()  # converts parameters AND buffers in-place
 
 
 def run_vlm_inference(image: Image.Image, version: str, model, processor, prompt: str = "") -> str:
@@ -27,18 +28,30 @@ def run_vlm_inference(image: Image.Image, version: str, model, processor, prompt
             "Keep it under 3 sentences."
         )
 
-    # Guarantee float32 on CPU before every inference call.
-    # This guards against HF-Space runtime re-loading weights in half precision.
-    _ensure_float32(model)
+    # ── CPU float32 safety ──────────────────────────────────────────────────
+    # Root cause of the "Half and Float" error on HF Space CPU:
+    #   • Moondream2's vision.py calls `prepare_crops` which creates the
+    #     image tensor (`all_crops`) in torch.get_default_dtype().
+    #   • If the default dtype is float16 (or any sub-module still holds
+    #     float16 weights), `F.linear(x, w.weight, w.bias)` crashes because
+    #     x and w.weight have different dtypes.
+    #
+    # Fix: (1) force the global default dtype to float32 for the duration of
+    # this call so that ALL new tensors are created as float32, and (2) also
+    # force every model weight/buffer to float32.
+    prev_dtype = torch.get_default_dtype()
+    torch.set_default_dtype(torch.float32)
+    try:
+        _ensure_model_float32(model)
 
-    # Check for the newer API (model.query) or fallback to older API
-    if hasattr(model, "query"):
-        # Wrap in no-op autocast (CPU) to prevent any implicit half-precision cast
-        with torch.autocast(device_type="cpu", enabled=False):
+        # Check for the newer API (model.query) or fallback to older API
+        if hasattr(model, "query"):
             response = model.query(image, prompt)
-        return response["answer"]
-    else:
-        # Fallback to older Moondream version API
-        with torch.autocast(device_type="cpu", enabled=False):
+            return response["answer"]
+        else:
+            # Fallback to older Moondream version API
             enc_image = model.encode_image(image)
             return model.answer_question(enc_image, prompt, processor)
+    finally:
+        # Always restore the previous default dtype, even on exception.
+        torch.set_default_dtype(prev_dtype)
