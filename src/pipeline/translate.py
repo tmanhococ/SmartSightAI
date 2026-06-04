@@ -30,6 +30,9 @@ class TranslatorModule:
             return f"[Chưa load model offline] {text}"
             
         inputs = self.offline_tokenizer(text, return_tensors="pt")
+        # Move tensors to same device as the model (handles CPU/GPU HF Spaces)
+        if hasattr(self.offline_model, "device") and hasattr(inputs, "to"):
+            inputs = inputs.to(self.offline_model.device)
         generated_ids = self.offline_model.generate(**inputs)
         translated_text = self.offline_tokenizer.decode(generated_ids[0], skip_special_tokens=True)
         return translated_text

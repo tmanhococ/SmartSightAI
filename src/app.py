@@ -1,6 +1,7 @@
 import os
 import tempfile
 import time
+import uuid
 import gradio as gr
 from PIL import Image
 from src.registry import ModelRegistry
@@ -63,7 +64,7 @@ def run_pipeline(image, vlm_version, translate_mode, tts_mode, custom_prompt):
     # TTS with temp directory destination
     with monitor.track("tts"):
         try:
-            temp_path = os.path.join(tempfile.gettempdir(), "output.mp3")
+            temp_path = os.path.join(tempfile.gettempdir(), f"output_{uuid.uuid4().hex}.mp3")
             audio_path = tts_module.generate_speech(vi_desc, tts_mode, filename=temp_path)
         except Exception as e:
             audio_path = None
