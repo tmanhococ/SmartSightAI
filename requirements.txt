@@ -9,3 +9,5 @@ psutil>=5.9.0
 sentencepiece>=0.1.99
 sacremoses>=0.0.53
 pytest>=7.0.0
+huggingface_hub<1.0.0
+
