@@ -1,19 +1,23 @@
-# AI Image Describer Implementation Plan
+# AI Image Describer Implementation Plan (Cập nhật sửa lỗi)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Xây dựng ứng dụng Gradio mô tả hình ảnh bằng tiếng Việt chạy cục bộ, hỗ trợ webcam, đổi phiên bản VLM (BLIP vs Moondream2), dịch thuật và phát audio tiếng Việt với cơ chế tự động chuyển đổi sang chế độ offline khi mất mạng.
+**Goal:** Xây dựng ứng dụng Gradio mô tả hình ảnh bằng tiếng Việt chạy cục bộ, hỗ trợ webcam, đổi phiên bản VLM (BLIP-Base vs Moondream2), dịch thuật (sử dụng deep-translator) và phát audio tiếng Việt (lưu file trong thư mục /tmp) với cơ chế tự động chuyển đổi sang chế độ offline khi mất mạng.
 
 **Architecture:** Sử dụng kiến trúc Pipeline chia thành các module chức năng độc lập (preprocess, vision_model, translate, tts). Quản lý mô hình qua class ModelRegistry dạng Singleton, đo hiệu năng bằng psutil, giao diện Gradio xử lý queue và nút Cancel bản địa.
 
-**Tech Stack:** Python 3.9+, Gradio, PyTorch, Transformers, googletrans==4.0.0rc1, gTTS, pyttsx3, psutil, pytest, Pillow.
+**Tech Stack:** Python 3.9+, Gradio, PyTorch, Transformers, deep-translator, gTTS, pyttsx3, psutil, pytest, Pillow.
 
 ---
 
-### Task 1: Environment and Requirements Setup
+### Task 1: Environment, Requirements, and Packages Setup
 
 **Files:**
 - Create: `requirements.txt`
+- Create: `src/__init__.py`
+- Create: `src/pipeline/__init__.py`
+- Create: `src/utils/__init__.py`
+- Create: `tests/__init__.py`
 
 - [ ] **Step 1: Write requirements configuration**
 
@@ -23,7 +27,7 @@ gradio>=4.0.0
 transformers>=4.40.0
 torch>=2.0.0
 pillow>=9.0.0
-googletrans==4.0.0rc1
+deep-translator>=1.11.0
 gTTS>=2.3.0
 pyttsx3>=2.90
 psutil>=5.9.0
@@ -32,16 +36,24 @@ sacremoses>=0.0.53
 pytest>=7.0.0
 ```
 
-- [ ] **Step 2: Install dependencies**
+- [ ] **Step 2: Create empty package initialization files**
+
+Create empty files at:
+- `src/__init__.py`
+- `src/pipeline/__init__.py`
+- `src/utils/__init__.py`
+- `tests/__init__.py`
+
+- [ ] **Step 3: Install dependencies**
 
 Run: `pip install -r requirements.txt`
 Expected: Cài đặt thành công toàn bộ các thư viện và không có xung đột package.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add requirements.txt
-git commit -m "chore: setup project requirements"
+git add requirements.txt src/__init__.py src/pipeline/__init__.py src/utils/__init__.py tests/__init__.py
+git commit -m "chore: setup environment and python packages"
 ```
 
 ---
@@ -74,7 +86,7 @@ def test_execution_monitor():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_monitor.py -v`
-Expected: FAIL due to `ModuleNotFoundError: No module named 'src'` or function not defined.
+Expected: FAIL due to missing files/modules.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -133,7 +145,6 @@ from PIL import Image
 from src.pipeline.preprocess import preprocess_image
 
 def test_preprocess_image_valid():
-    # Test valid image conversion and resizing
     img = Image.new("RGBA", (1500, 1000), color="red")
     processed = preprocess_image(img)
     assert processed.mode == "RGB"
@@ -149,7 +160,7 @@ def test_preprocess_image_too_small():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_preprocess.py -v`
-Expected: FAIL due to missing module or functions.
+Expected: FAIL
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -212,7 +223,6 @@ from unittest.mock import patch, MagicMock
 from src.pipeline.translate import TranslatorModule
 
 def test_translate_offline():
-    # Test offline translation using mock Helsinki-NLP model
     mock_tokenizer = MagicMock()
     mock_model = MagicMock()
     
@@ -226,11 +236,9 @@ def test_translate_offline():
     assert result == "Xin chào"
     assert is_offline is True
 
-@patch("googletrans.Translator.translate")
+@patch("src.pipeline.translate.GoogleTranslator.translate")
 def test_translate_online_success(mock_google_translate):
-    mock_response = MagicMock()
-    mock_response.text = "Xin chào"
-    mock_google_translate.return_value = mock_response
+    mock_google_translate.return_value = "Xin chào"
     
     translator = TranslatorModule()
     result, is_offline = translator.translate("Hello", mode="Auto-Detect (Online)")
@@ -249,13 +257,13 @@ Expected: FAIL
 Create: `src/pipeline/translate.py`
 ```python
 import logging
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 
 class TranslatorModule:
     def __init__(self, offline_model=None, offline_tokenizer=None):
         self.offline_model = offline_model
         self.offline_tokenizer = offline_tokenizer
-        self.google_translator = Translator()
+        self.google_translator = GoogleTranslator(source="auto", target="vi")
         
     def translate(self, text: str, mode: str = "Auto-Detect (Online)") -> tuple[str, bool]:
         if not text.strip():
@@ -266,8 +274,8 @@ class TranslatorModule:
             
         # Try Online translation
         try:
-            translated = self.google_translator.translate(text, dest="vi")
-            return translated.text, False
+            translated_text = self.google_translator.translate(text)
+            return translated_text, False
         except Exception as e:
             logging.warning(f"Online translation failed: {e}. Falling back to offline translation.")
             if self.offline_model and self.offline_tokenizer:
@@ -294,7 +302,7 @@ Expected: PASS
 
 ```bash
 git add src/pipeline/translate.py tests/test_translate.py
-git commit -m "feat: implement translator module with network fallback"
+git commit -m "feat: implement translator module with deep-translator"
 ```
 
 ---
@@ -310,21 +318,25 @@ git commit -m "feat: implement translator module with network fallback"
 Create: `tests/test_tts.py`
 ```python
 import os
+import tempfile
 import pytest
 from unittest.mock import patch, MagicMock
 from src.pipeline.tts import TTSModule
 
 def test_tts_offline():
-    # Mock pyttsx3 engine to test offline generation
-    with patch("pyttsx3.init") as mock_init:
+    # Mock pyttsx3 engine in the correct import scope
+    with patch("src.pipeline.tts.pyttsx3.init") as mock_init:
         mock_engine = MagicMock()
         mock_init.return_value = mock_engine
         
         tts = TTSModule()
-        output_path = tts.generate_speech("Xin chào", mode="Offline (pyttsx3)", filename="test_offline.mp3")
+        temp_dir = tempfile.gettempdir()
+        target_path = os.path.join(temp_dir, "test_offline.mp3")
         
-        assert output_path == "test_offline.mp3"
-        mock_engine.save_to_file.assert_called_once_with("Xin chào", "test_offline.mp3")
+        output_path = tts.generate_speech("Xin chào", mode="Offline (pyttsx3)", filename=target_path)
+        
+        assert output_path == target_path
+        mock_engine.save_to_file.assert_called_once_with("Xin chào", target_path)
         mock_engine.runAndWait.assert_called_once()
 ```
 
@@ -338,6 +350,7 @@ Expected: FAIL
 Create: `src/pipeline/tts.py`
 ```python
 import os
+import tempfile
 import logging
 from gtts import gTTS
 import pyttsx3
@@ -350,20 +363,25 @@ class TTSModule:
         if self.offline_engine is None:
             try:
                 self.offline_engine = pyttsx3.init()
-                # Set Vietnamese voice if available, otherwise defaults
                 voices = self.offline_engine.getProperty("voices")
                 for voice in voices:
-                    if "vi" in voice.languages or "vietnam" in voice.name.lower():
+                    if voice.languages and any("vi" in lang for lang in voice.languages):
+                        self.offline_engine.setProperty("voice", voice.id)
+                        break
+                    elif "vietnam" in voice.name.lower():
                         self.offline_engine.setProperty("voice", voice.id)
                         break
             except Exception as e:
-                logging.error(f"Failed to initialize pyttsx3: {e}")
+                logging.error(f"Failed to initialize pyttsx3 offline TTS: {e}")
                 
-    def generate_speech(self, text: str, mode: str = "Auto-Detect (Online)", filename: str = "output.mp3") -> str:
+    def generate_speech(self, text: str, mode: str = "Auto-Detect (Online)", filename: str = None) -> str:
         if not text.strip():
             return None
             
-        # Clean existing file to avoid lock issues
+        if filename is None:
+            filename = os.path.join(tempfile.gettempdir(), "output.mp3")
+            
+        # Clean existing file to avoid permission or handle lock issues
         if os.path.exists(filename):
             try:
                 os.remove(filename)
@@ -381,8 +399,12 @@ class TTSModule:
             return filename
         except Exception as e:
             logging.warning(f"Online gTTS failed: {e}. Falling back to pyttsx3.")
-            self._generate_offline(text, filename)
-            return filename
+            try:
+                self._generate_offline(text, filename)
+                return filename
+            except Exception as e_off:
+                logging.error(f"Offline TTS failed: {e_off}")
+                return None
             
     def _generate_offline(self, text: str, filename: str):
         self._init_offline()
@@ -402,7 +424,7 @@ Expected: PASS
 
 ```bash
 git add src/pipeline/tts.py tests/test_tts.py
-git commit -m "feat: implement TTS module with fallback"
+git commit -m "feat: implement TTS module using temp directory and proper patch scope"
 ```
 
 ---
@@ -413,12 +435,18 @@ git commit -m "feat: implement TTS module with fallback"
 - Create: `src/registry.py`
 - Test: `tests/test_registry.py`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing test with fixture isolation**
 
 Create: `tests/test_registry.py`
 ```python
 import pytest
 from src.registry import ModelRegistry
+
+@pytest.fixture(autouse=True)
+def reset_singleton():
+    ModelRegistry._instance = None
+    yield
+    ModelRegistry._instance = None
 
 def test_singleton_pattern():
     reg1 = ModelRegistry()
@@ -437,6 +465,7 @@ Create: `src/registry.py`
 ```python
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, MarianMTModel, MarianTokenizer
+from src.pipeline.translate import TranslatorModule
 
 class ModelRegistry:
     _instance = None
@@ -444,10 +473,11 @@ class ModelRegistry:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(ModelRegistry, cls).__new__(cls)
-            cls._instance.vlm_models = {"BLIP-Base (220M)": None, "Moondream2 (2B)": None}
-            cls._instance.vlm_processors = {"BLIP-Base (220M)": None, "Moondream2 (2B)": None}
+            cls._instance.vlm_models = {"Moondream2 (2B)": None, "BLIP-Base (220M)": None}
+            cls._instance.vlm_processors = {"Moondream2 (2B)": None, "BLIP-Base (220M)": None}
             cls._instance.translation_model = None
             cls._instance.translation_tokenizer = None
+            cls._instance.translator_instance = None
         return cls._instance
         
     def get_vlm(self, version: str) -> tuple:
@@ -462,25 +492,27 @@ class ModelRegistry:
                 model = BlipForConditionalGeneration.from_pretrained(model_id)
             else: # Moondream2 (2B)
                 model_id = "vikhyatk/moondream2"
-                revision = "2024-08-26" # Stable version
+                revision = "2025-01-09" # API 2025 compatible
                 processor = AutoTokenizer.from_pretrained(model_id, revision=revision)
                 model = AutoModelForCausalLM.from_pretrained(
                     model_id, 
                     revision=revision, 
                     trust_remote_code=True,
-                    torch_dtype=torch.float32 # Default to float32 on CPU
+                    torch_dtype=torch.float32
                 )
             self.vlm_models[version] = model
             self.vlm_processors[version] = processor
             
         return self.vlm_models[version], self.vlm_processors[version]
         
-    def get_translator(self) -> tuple:
-        if self.translation_model is None:
+    def get_translator_module(self, mode: str) -> TranslatorModule:
+        if self.translator_instance is None:
+            # We initialize TranslatorModule with Helsinki-NLP model if requested or offline fallback needed
             model_id = "Helsinki-NLP/opus-mt-en-vi"
             self.translation_tokenizer = MarianTokenizer.from_pretrained(model_id)
             self.translation_model = MarianMTModel.from_pretrained(model_id)
-        return self.translation_model, self.translation_tokenizer
+            self.translator_instance = TranslatorModule(self.translation_model, self.translation_tokenizer)
+        return self.translator_instance
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -492,7 +524,7 @@ Expected: PASS
 
 ```bash
 git add src/registry.py tests/test_registry.py
-git commit -m "feat: implement singleton model registry"
+git commit -m "feat: implement singleton model registry with key correction and TranslatorModule cache"
 ```
 
 ---
@@ -523,6 +555,15 @@ def test_run_vlm_blip_mock():
     img = Image.new("RGB", (224, 224))
     result = run_vlm_inference(img, "BLIP-Base (220M)", mock_model, mock_processor)
     assert result == "a person holding a phone"
+    
+def test_run_vlm_moondream_mock():
+    mock_model = MagicMock()
+    mock_model.query.return_value = {"answer": "a photo of a laptop"}
+    
+    img = Image.new("RGB", (224, 224))
+    result = run_vlm_inference(img, "Moondream2 (2B)", mock_model, MagicMock(), prompt="What is this?")
+    assert result == "a photo of a laptop"
+    mock_model.query.assert_called_once_with(img, "What is this?")
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -543,14 +584,11 @@ def run_vlm_inference(image: Image.Image, version: str, model, processor, prompt
         caption = processor.decode(out[0], skip_special_tokens=True)
         return caption
     elif version == "Moondream2 (2B)":
-        # Moondream2 uses custom API with trust_remote_code
-        # For prompt-based query or standard caption
         if not prompt.strip():
             prompt = "Describe what you see in this image briefly and clearly. Focus on the main subject, people, objects, and any important context. Keep it under 3 sentences."
-            
-        enc_image = model.encode_image(image)
-        answer = model.answer_question(enc_image, prompt, processor)
-        return answer
+        # Using new Moondream2 transformers API
+        response = model.query(image, prompt)
+        return response["answer"]
     else:
         raise ValueError(f"Unsupported model version: {version}")
 ```
@@ -564,7 +602,7 @@ Expected: PASS
 
 ```bash
 git add src/pipeline/vision_model.py tests/test_vision_model.py
-git commit -m "feat: implement VLM inference module"
+git commit -m "feat: implement VLM inference using Moondream2 2025 query API"
 ```
 
 ---
@@ -574,22 +612,22 @@ git commit -m "feat: implement VLM inference module"
 **Files:**
 - Create: `src/app.py`
 
-- [ ] **Step 1: Write full UI application with queuing and cancel support**
+- [ ] **Step 1: Write full UI application with queuing, cancel support, and fixed layout**
 
 Create: `src/app.py`
 ```python
 import os
+import tempfile
 import time
 import gradio as gr
 from PIL import Image
 from src.registry import ModelRegistry
 from src.pipeline.preprocess import preprocess_image
 from src.pipeline.vision_model import run_vlm_inference
-from src.pipeline.translate import TranslatorModule
 from src.pipeline.tts import TTSModule
 from src.utils.monitor import ExecutionMonitor
 
-# Global objects
+# Global registry and TTS
 registry = ModelRegistry()
 tts_module = TTSModule()
 
@@ -632,20 +670,19 @@ def run_pipeline(image, vlm_version, translate_mode, tts_mode, custom_prompt):
     # Load Translator and Translate
     with monitor.track("translation"):
         try:
-            trans_model, trans_tokenizer = None, None
-            if translate_mode == "Offline (Helsinki-NLP)" or "Auto-Detect" in translate_mode:
-                trans_model, trans_tokenizer = registry.get_translator()
-            translator = TranslatorModule(trans_model, trans_tokenizer)
+            # Load TranslatorModule using Singleton registry
+            translator = registry.get_translator_module(translate_mode)
             vi_desc, is_offline_trans = translator.translate(eng_desc, translate_mode)
         except Exception as e:
             vi_desc = f"[Lỗi dịch] {eng_desc}"
             is_offline_trans = False
             gr.Warning(f"Dịch thuật thất bại: {str(e)}")
             
-    # TTS
+    # TTS with temp directory destination
     with monitor.track("tts"):
         try:
-            audio_path = tts_module.generate_speech(vi_desc, tts_mode, filename="output.mp3")
+            temp_path = os.path.join(tempfile.gettempdir(), "output.mp3")
+            audio_path = tts_module.generate_speech(vi_desc, tts_mode, filename=temp_path)
         except Exception as e:
             audio_path = None
             gr.Warning(f"Không thể tạo giọng đọc: {str(e)}")
@@ -657,7 +694,7 @@ def run_pipeline(image, vlm_version, translate_mode, tts_mode, custom_prompt):
     
     # Prepend translation warning if fallback happened
     if "Auto-Detect" in translate_mode and is_offline_trans:
-        gr.Warning("Mất kết nối Internet - Tự động chuyển đổi sang dịch Offline (Helsinki-NLP)")
+        gr.Warning("Mất kết nối Internet - Tự động chuyển sang dịch Offline (Helsinki-NLP)")
         
     return (
         eng_desc,
@@ -677,8 +714,8 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="indigo
         with gr.Column(scale=1):
             input_image = gr.Image(sources=["webcam", "upload"], type="pil", label="Đầu vào hình ảnh")
             vlm_version = gr.Radio(
-                choices=["BLIP-Base (220M)", "Moondream2 (2B)"], 
-                value="BLIP-Base (220M)", 
+                choices=["Moondream2 (2B)", "BLIP-Base (220M)"], 
+                value="Moondream2 (2B)", 
                 label="Mô hình VLM"
             )
             with gr.Row():
@@ -707,7 +744,9 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="indigo
             vi_out = gr.Textbox(label="Mô tả Tiếng Việt (Dịch)", interactive=False)
             audio_out = gr.Audio(label="Giọng đọc Tiếng Việt", autoplay=True, interactive=False)
             
-            with gr.Label(label="Performance Dashboard"):
+            # Using gr.Group for performance metrics instead of gr.Label
+            with gr.Group():
+                gr.Markdown("### 📊 Performance Dashboard")
                 with gr.Row():
                     total_time_lbl = gr.Textbox(label="TOTAL TIME", value="0.000 s", interactive=False)
                     ram_usage_lbl = gr.Textbox(label="RAM USAGE", value="0.0 MB", interactive=False)
@@ -724,9 +763,9 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="indigo
     cancel_btn.click(fn=None, cancels=[run_event])
 
 if __name__ == "__main__":
-    # Pre-cache registry setup on startup
-    print("Warm-starting ModelRegistry...")
-    registry.get_vlm("BLIP-Base (220M)")
+    # Pre-cache registry setup on startup with default Moondream2
+    print("Warm-starting ModelRegistry with Moondream2 (2B)...")
+    registry.get_vlm("Moondream2 (2B)")
     
     # Enable queuing to serialise concurrency on CPU
     demo.queue().launch()
@@ -740,11 +779,11 @@ Expected: ALL tests pass.
 - [ ] **Step 3: Run the web application locally**
 
 Run: `python src/app.py`
-Expected: Webserver khởi động tại http://127.0.0.1:7860/ và load thành công mô hình BLIP-Base.
+Expected: Webserver khởi động tại http://127.0.0.1:7860/ và load thành công mô hình Moondream2 (2B).
 
 - [ ] **Step 4: Commit UI changes**
 
 ```bash
 git add src/app.py
-git commit -m "feat: add main Gradio web application with native queue and cancel support"
+git commit -m "feat: add main Gradio web application with native queue, cancel, temp directory outputs, gr.Group container, and warm-start Moondream2"
 ```
