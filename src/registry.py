@@ -1,18 +1,21 @@
+import threading
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, MarianMTModel, MarianTokenizer
 from src.pipeline.translate import TranslatorModule
 
 class ModelRegistry:
     _instance = None
+    _lock = threading.Lock()
     
     def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(ModelRegistry, cls).__new__(cls)
-            cls._instance.vlm_models = {"Moondream2 (2B)": None, "Moondream2 (0.5B)": None}
-            cls._instance.vlm_processors = {"Moondream2 (2B)": None, "Moondream2 (0.5B)": None}
-            cls._instance.translation_model = None
-            cls._instance.translation_tokenizer = None
-            cls._instance.translator_instance = None
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(ModelRegistry, cls).__new__(cls)
+                cls._instance.vlm_models = {"Moondream2 (2B)": None, "Moondream2 (0.5B)": None}
+                cls._instance.vlm_processors = {"Moondream2 (2B)": None, "Moondream2 (0.5B)": None}
+                cls._instance.translation_model = None
+                cls._instance.translation_tokenizer = None
+                cls._instance.translator_instance = None
         return cls._instance
         
     def get_vlm(self, version: str) -> tuple:
